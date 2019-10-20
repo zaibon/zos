@@ -50,6 +50,9 @@ func reserve(w http.ResponseWriter, r *http.Request) {
 }
 
 func pollReservations(w http.ResponseWriter, r *http.Request) {
+	gil.RLock()
+	defer gil.RUnlock()
+
 	nodeID := mux.Vars(r)["node_id"]
 	var since time.Time
 	s := r.URL.Query().Get("since")
@@ -133,17 +136,10 @@ func getReservation(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("content-type", "application/json")
 
-	obj := struct {
-		Reservation *provision.Reservation `json:"reservation"`
-		Result      *provision.Result      `json:"result"`
-	}{}
-
 	for _, r := range provStore.Reservations {
 		if r.Reservation.ID == id {
 			w.WriteHeader(http.StatusOK)
-			obj.Reservation = r.Reservation
-			obj.Result = r.Result
-			if err := json.NewEncoder(w).Encode(obj); err != nil {
+			if err := json.NewEncoder(w).Encode(r.Reservation); err != nil {
 				log.Printf("error during json encoding of reservation: %v", err)
 			}
 			return
