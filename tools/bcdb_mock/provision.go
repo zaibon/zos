@@ -15,6 +15,9 @@ import (
 func reserve(w http.ResponseWriter, r *http.Request) {
 	nodeID := mux.Vars(r)["node_id"]
 
+	gil.RLock()
+	defer gil.RUnlock()
+
 	_, ok := nodeStore[nodeID]
 	if !ok {
 		http.Error(w, fmt.Sprintf("node %s not found", nodeID), http.StatusNotFound)

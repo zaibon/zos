@@ -13,6 +13,9 @@ import (
 )
 
 func registerNode(w http.ResponseWriter, r *http.Request) {
+	gil.Lock()
+	defer gil.Unlock()
+
 	log.Println("node register request received")
 
 	defer r.Body.Close()
@@ -28,7 +31,6 @@ func registerNode(w http.ResponseWriter, r *http.Request) {
 	i, ok := nodeStore[n.NodeID]
 	if !ok || i.Node == nil {
 		nodeStore[n.NodeID] = &n
-
 	} else {
 		i.NodeID = n.NodeID
 		i.FarmID = n.FarmID
@@ -39,6 +41,9 @@ func registerNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func nodeDetail(w http.ResponseWriter, r *http.Request) {
+	gil.Lock()
+	defer gil.Unlock()
+
 	nodeID := mux.Vars(r)["node_id"]
 	node, ok := nodeStore[nodeID]
 	if !ok {
@@ -74,6 +79,9 @@ func listNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerFarm(w http.ResponseWriter, r *http.Request) {
+	gil.Lock()
+	defer gil.Unlock()
+
 	log.Println("farm register request received")
 
 	defer r.Body.Close()
@@ -100,6 +108,9 @@ func listFarm(w http.ResponseWriter, r *http.Request) {
 }
 
 func getFarm(w http.ResponseWriter, r *http.Request) {
+	gil.RLock()
+	defer gil.Unlock()
+
 	farmID := mux.Vars(r)["farm_id"]
 	farm, ok := farmStore[farmID]
 	if !ok {
@@ -113,9 +124,12 @@ func getFarm(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerCapacity(w http.ResponseWriter, r *http.Request) {
+	gil.Lock()
+	defer gil.Unlock()
+
 	x := struct {
 		Capacity capacity.Capacity `json:"capacity,omitempty"`
-		DMI      *dmi.DMI          `json:"dmi,omitempty"`
+		DMI      dmi.DMI           `json:"dmi,omitempty"`
 	}{}
 
 	nodeID := mux.Vars(r)["node_id"]
@@ -131,6 +145,7 @@ func registerCapacity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	node.Capacity = x.Capacity
+	//TODO: DMI is not stored anywhere!
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

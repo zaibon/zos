@@ -11,6 +11,9 @@ import (
 )
 
 func registerIfaces(w http.ResponseWriter, r *http.Request) {
+	gil.Lock()
+	defer gil.Unlock()
+
 	log.Println("network interfaces register request received")
 
 	nodeID := mux.Vars(r)["node_id"]
@@ -37,6 +40,8 @@ func registerIfaces(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerPorts(w http.ResponseWriter, r *http.Request) {
+	gil.Lock()
+	defer gil.Unlock()
 
 	nodeID := mux.Vars(r)["node_id"]
 	if _, ok := nodeStore[nodeID]; !ok {
@@ -64,6 +69,9 @@ func registerPorts(w http.ResponseWriter, r *http.Request) {
 }
 
 func configurePublic(w http.ResponseWriter, r *http.Request) {
+	gil.Lock()
+	defer gil.Unlock()
+
 	nodeID := mux.Vars(r)["node_id"]
 	node, ok := nodeStore[nodeID]
 	if !ok {

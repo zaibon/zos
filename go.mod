@@ -16,6 +16,7 @@ require (
 	github.com/dave/jennifer v1.3.0
 	github.com/deckarep/golang-set v1.7.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/dspinhirne/netaddr-go v0.0.0-20180510133009-a6cfb692cb10
 	github.com/garyburd/redigo v1.6.0
 	github.com/go-check/check v0.0.0-20190902080502-41f04d3bba15 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect

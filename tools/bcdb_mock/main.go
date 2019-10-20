@@ -54,6 +54,11 @@ type node struct {
 }
 
 var (
+	//gil is a global lock to synchronize access to ALL stores
+	//of course this is very inefficient, but we don't care since
+	//this is a development tool only.
+	gil sync.RWMutex
+
 	nodeStore  map[string]*node
 	farmStore  map[string]*farmInfo
 	allocStore *allocationStore
