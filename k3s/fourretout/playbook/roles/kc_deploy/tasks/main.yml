@@ -1,0 +1,27 @@
+---
+# tasks file for example
+- name: Copy example files
+  copy:
+    src: "{{ item }}"
+    dest: "/home/vagrant"
+  with_items:
+    - "{{ role_path }}/files/busybox.yml"
+    - "{{ role_path }}/files/network-policy-allow-busybox.yml"
+    - "{{ role_path }}/files/network-policy-deny-all.yml"
+    - "{{ role_path }}/files/service-load-balancer.yml"
+    - "{{ role_path }}/files/service-node-port.yml"
+    - "{{ role_path }}/files/service.yml"
+    - "{{ role_path }}/files/two-containers.yml"
+  become: false
+
+- name: delete all ressources
+  command: kubectl delete svc,deploy,po,NetworkPolicy,pv,pvc --all
+  register: myoutput1
+  ignore_errors: yes
+
+- name: deploy all ressources
+  command: kubectl create -f .
+  register: myoutput2
+
+- debug:
+    msg: ressources deployment results  {{ myoutput1 }} et 2 {{ myoutput2 }}

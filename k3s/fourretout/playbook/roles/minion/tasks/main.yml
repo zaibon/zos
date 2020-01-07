@@ -1,0 +1,34 @@
+---
+# tasks file for minion
+
+# on minion we should have the kubelet and the kube-proxy running
+- name: Is kube working
+  shell: res=$(ps aux | grep -c '[k]ube-');if [ $res -gt 1 ];then echo 1; else echo 0; fi
+  register: is_kube_already_working
+
+- debug:
+    msg: is_kube_already_working  {{ is_kube_already_working.stdout }}
+
+- name: Copy the join command to server location
+  copy:
+    src: join-command
+    dest: /tmp/join-command.sh
+    mode: 0777
+  when: is_kube_already_working.stdout|int < 1
+
+- name: Join the node to cluster
+  command: sh /tmp/join-command.sh
+  when: is_kube_already_working.stdout|int < 1
+
+- name: Generate init-defaults for debugging purposes
+  command: kubeadm config print init-defaults
+  register: init_defaults
+  when: is_kube_already_working.stdout|int < 1
+
+- name: Copy init-defaults command to local file
+  local_action:
+    module: copy
+    content: "{{ init_defaults.stdout_lines[0] }}"
+    dest: "./init_defaults"
+  become: false
+  when: is_kube_already_working.stdout|int < 1

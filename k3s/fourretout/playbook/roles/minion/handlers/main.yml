@@ -1,0 +1,6 @@
+---
+# handlers file for minion
+- name: docker status
+  service:
+    name: docker
+    state: started

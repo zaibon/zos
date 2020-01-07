@@ -1,0 +1,64 @@
+---
+# tasks file for master
+
+- name: install HA PROXY
+  apt:
+    name: haproxy
+    state: present
+
+- name: start HA PROXY
+  service:
+    name: haproxy
+    state: started
+    enabled: no
+
+# - name: Download calico.yaml
+#   get_url:
+#     url: https://docs.projectcalico.org/master/manifests/calico.yaml
+#     dest: "{{ base_path }}/calico.yaml"
+
+# on master we should have 4 processes  the kube-apiserver, kube-scheduler, kube-controller-manager and the kube-proxy running
+- name: Is kube working
+  shell: res=$(ps aux | grep -c '[k]ube-');if [ $res -gt 3 ];then echo 1; else echo 0; fi
+  register: is_kube_already_working
+
+- debug:
+    msg: is_kube_already_working  {{ is_kube_already_working.stdout }}
+
+- name: Initialize the Kubernetes cluster using kubeadm
+  command: kubeadm init --apiserver-advertise-address="{{ ip }}" --apiserver-cert-extra-sans="{{ ip }}"  --node-name k8s-master --pod-network-cidr=192.168.0.0/16
+  when: is_kube_already_working.stdout|int < 1
+
+- name: Setup kubeconfig for vagrant user
+  command: "{{ item }}"
+  with_items:
+    - mkdir -p /home/vagrant/.kube
+    - cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config
+    - chown vagrant:vagrant /home/vagrant/.kube/config
+  when: is_kube_already_working.stdout|int < 1
+
+- name: Install calico pod network
+  become: false
+  command: kubectl create -f https://docs.projectcalico.org/v3.10/manifests/calico.yaml
+  when: is_kube_already_working.stdout|int < 1
+
+- name: Remove taint on master to be able to schedule pod on master
+  become: false
+  command: kubectl taint nodes --all node-role.kubernetes.io/master-
+
+- name: Generate join command
+  command: kubeadm token create --print-join-command
+  register: join_command
+
+- name: Copy join command to local file
+  local_action:
+    module: copy
+    content: "{{ join_command.stdout_lines[0] }}"
+    dest: "./join-command"
+  become: false
+#- name: Copy join command to local file
+#  local_action:
+#    module: copy
+##    content: "{{ join_command.stdout_lines[0] }}"
+#    dest: "./join-command"
+#  become: false

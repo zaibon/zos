@@ -1,0 +1,22 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: drupal-ing
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: drupal.local
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: drupal-service
+              servicePort: http
+    - host: mysql.local
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: drupal-mysql-service
+              servicePort: http

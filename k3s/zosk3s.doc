@@ -1,0 +1,28 @@
+ 
+umount /var/lib/rancher -lf; umount /etc/rancher -lf; umount /var/lib/rook -lf; umount /var/lib/kubelet -lf; \
+rm -rf /var/cache/rancher/; rm -rf /var/cache/rancher/rook/; rm -rf /var/cache/etc/; rm -rf /etc/rancher/; rm -rf /var/cache/rancher/kubelet/; mkdir /var/cache/rancher; mkdir /var/cache/etc; \
+mkdir /var/cache/etc/rancher; mkdir /etc/rancher; mount --bind /var/cache/etc/rancher /etc/rancher; \
+mkdir /var/cache/rancher; mkdir /var/lib/rancher; mount --bind /var/cache/rancher /var/lib/rancher; \
+mkdir /var/cache/rook; mkdir /var/lib/rook; mount --bind /var/cache/rook /var/lib/rook; \
+mkdir /var/cache/kubelet; mkdir /var/lib/kubelet; mount --bind /var/cache/kubelet /var/lib/kubelet; \
+alias k="/var/cache/rancher/k3s/k3s kubectl"; \
+mkdir /var/lib/rancher/k3s; cd /var/lib/rancher/k3s; wget https://github.com/rancher/k3s/releases/download/v1.0.0/k3s -O k3s; \
+mount --make-rshared /var/cache; \ 
+chmod +x k3s; \
+./k3s server &> k3s_output.log &; \
+echo "token \n"; cat /var/lib/rancher/k3s/server/node-token; \
+echo "Kubeconfig \n"; cat /etc/rancher/k3s/k3s.yaml;
+# master
+# k3s server &
+# Kubeconfig is written to /etc/rancher/k3s/k3s.yaml
+# sudo k3s kubectl get node
+
+# On a different node run the below. NODE_TOKEN comes from /var/lib/rancher/k3s/server/node-token
+# on your server
+# sudo k3s agent --server https://myserver:6443 --token ${NODE_TOKEN}
+
+./k3s agent --server https://10.6.0.11:6443 --token K10238af103c5a510c488b6960f90470ecc24e63692f5eaed39cbf245c9c9f8b301::server:7d928b4615bdfad39d4e30343c0bcba2
+./k3s agent --server https://10.6.0.11:6443 --token K10acf97479d1085b523ef65ca00ade611a316dbd67e3a16c4d3744c17517ad1fd4::server:858bf980ec696f5967cca357a91f1c15 -l k3s.log &
+
+helm repo add rook-release https://charts.rook.io/release
+helm install --namespace rook-ceph rook-ceph rook-release/rook-ceph

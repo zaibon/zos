@@ -1,0 +1,18 @@
+---
+all:
+  children:
+    masters:
+      hosts:
+        192.168.50.10
+    minions:
+     children:
+       node1:
+          hosts:
+            192.168.50.11
+       node2:
+          hosts:
+            192.168.50.12 
+    master1:
+      hosts:
+        192.168.50.10
+

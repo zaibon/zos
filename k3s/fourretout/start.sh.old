@@ -1,0 +1,17 @@
+#!/bin/bash
+set -Eeuxo pipefail
+
+rm -f ./vagrant/.ssh/*
+printf "Please select a public key to long with ssh:\n"
+select d in ~/.ssh/*.pub; do
+    test -n "$d" && break
+    echo ">>> Invalid Selection"
+done
+echo "$d"
+FILENAME=$(basename "${d}")
+cp $d ./vagrant/.ssh
+mv ./vagrant/.ssh/${FILENAME} ./vagrant/.ssh/id_rsa.pub
+
+echo "Generating ssh key for the vms"
+ssh-keygen -t ed25519 -b 4096 -C "pi@raspberry" -f ./vagrant/.ssh/vagrant_rsa -q -N ""
+vagrant up

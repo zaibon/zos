@@ -1,0 +1,14 @@
+IMAGE_NAME = "ubuntu/eoan64"
+Vagrant.configure("2") do |config|
+  config.vm.box = IMAGE_NAME
+  config.vm.provision "C", after: "B", type: "shell", inline:<<-SHELL
+  echo 'C'
+  SHELL
+  config.vm.provision "B", type: "shell", inline:<<-SHELL
+  echo 'B'
+  SHELL
+  config.vm.provision "D", type: "shell", inline:<<-SHELL
+  echo 'D'
+  SHELL
+
+end

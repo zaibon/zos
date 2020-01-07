@@ -1,0 +1,43 @@
+IMAGE_NAME = "ubuntu/eoan64"
+N = 2
+
+Vagrant.configure("2") do |config|
+  config.ssh.insert_key = true
+
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 1024
+    v.cpus = 2
+  end
+
+  config.vm.define "k8s-master" do |master|
+    master.vm.box = IMAGE_NAME
+    master.vm.network "private_network", ip: "192.168.50.10"
+    master.vm.hostname = "master-1"
+    master.vm.provision "file", source: "vagrant_rsa", destination: ".ssh/vagrant_rsa"
+    my_public_key = File.read(".ssh/id_rsa.pub")
+    public_key = File.read(".ssh/vagrant_rsa.pub")
+    master.vm.provision "SSH", type: "shell", inline:<<-SHELL
+    echo 'Copying ansible-vm public SSH Keys to the VM'
+    mkdir -p /home/vagrant/.ssh
+    chmod 700 /home/vagrant/.ssh
+    echo '#{my_public_key}' >> /home/vagrant/.ssh/authorized_keys
+    echo '#{public_key}' >> /home/vagrant/.ssh/authorized_keys
+    chmod -R 600 /home/vagrant/.ssh/authorized_keys
+    echo 'Host 192.168.*.*' >> /home/vagrant/.ssh/config
+    echo 'StrictHostKeyChecking no' >> /home/vagrant/.ssh/config
+    echo 'UserKnownHostsFile /dev/null' >> /home/vagrant/.ssh/config
+    chmod -R 600 /home/vagrant/.ssh/config
+    SHELL 
+  end
+
+  (1..N).each do |i|
+    config.vm.define "node-#{i}" do |node|
+      node.vm.box = IMAGE_NAME
+      node.vm.network "private_network", ip: "192.168.50.#{i + 10}"
+      node.vm.hostname = "minion-#{i}"
+      node.vm.provision "ansible" do |ansible|
+        ansible.playbook = "setup/node-playbook.yml"
+      end
+    end
+  end
+end

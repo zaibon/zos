@@ -1,0 +1,26 @@
+---
+- name: "[MASTER] - install masters"
+  hosts: masters
+  become: yes
+  roles:
+    - common
+    - master
+  tags:
+    - masters
+
+- name: "[MINION] - install minions"
+  hosts: minions
+  become: yes
+  roles:
+    - common
+    - minion
+  tags:
+    - minions
+
+- name: "[MASTER1] - install ressources"
+  hosts: master1
+  become: no
+  roles:
+    - kc_deploy
+  tags:
+    - master1

@@ -1,0 +1,59 @@
+IMAGE_NAME = "bento/ubuntu-18.10"
+MASTER_HOSTNAME = "master"
+MINION_HOSTNAME = "minion"
+# IF RANGE IS NOT WITHIN 192.168 we shoudl adapt the calico yaml
+MINION_NETWORK = "192.168.50"
+MINION_NUMBER = 2
+MASTER_NUMBER = 1
+MASTER_NETWORK = "192.168.50"
+
+Vagrant.configure("2") do |config|
+  config.ssh.insert_key = true
+  host_vars = {}
+  minion_hosts = []
+  master_hosts = []
+  config.vm.provider "virtualbox" do |v|
+    v.memory = 2048
+    v.cpus = 2
+  end
+
+  (1..MASTER_NUMBER).each do |m|
+    config.vm.define "#{MASTER_HOSTNAME}#{m}" do |master|
+      master.vm.box = IMAGE_NAME
+      # avoid taking .1 ip could be conflicting with router
+      master.vm.network "private_network", ip: "#{MASTER_NETWORK}.#{m+1}"
+      master.vm.hostname = "#{MASTER_HOSTNAME}#{m}"
+      host_vars["#{MASTER_HOSTNAME}#{m}"] = {"hostname"=> "#{MASTER_HOSTNAME}#{m}", "ip" => "#{MASTER_NETWORK}.#{m+1}"}
+      master_hosts.push("#{MASTER_HOSTNAME}#{m}")
+    end
+  end
+
+  (1..MINION_NUMBER).each do |i|
+    config.vm.define "#{MINION_HOSTNAME}#{i}" do |node|
+      node.vm.box = IMAGE_NAME
+      # avoid taking .1 ip could be conflicting with router
+      node.vm.network "private_network", ip: "#{MINION_NETWORK}.#{i+10}"
+      node.vm.hostname = "#{MINION_HOSTNAME}#{i}"
+      host_vars["#{MINION_HOSTNAME}#{i}"]  = {"hostname"=>"#{MINION_HOSTNAME}#{i}" , "ip" => "#{MINION_NETWORK}.#{i+10}"}
+      minion_hosts.push("#{MINION_HOSTNAME}#{i}")
+    end
+  end
+  
+  config.vm.provision :ansible do |ansible|
+    ansible.playbook = "#{Dir.getwd}/../playbook/playbook.yml"
+    ansible.become = true
+    ansible.host_vars =  host_vars
+    ansible.groups =  {
+      "minions" => minion_hosts,
+      #minion_host,
+      "masters" => master_hosts,
+      
+      # "masters:vars" => { "cluster" => groups ,"variable2" => "example" },
+      "all:vars" => {"base_path" => "/home/vagrant", "first_master_ip" => host_vars["#{MASTER_HOSTNAME}1"]},
+      "all:children" => [ "masters","minions" ],
+    }
+    # ansible.galaxy_role_file = "#{Dir.getwd}/../playbook/requirement.yml"
+    # ansible.galaxy_roles_path = "#{Dir.getwd}/../playbook/master"
+    # ansible.galaxy_command = "sudo ansible-galaxy install  --role-file=%{role_file}  --roles-path=%{roles_path} --force"
+  end
+end
