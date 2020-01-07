@@ -51,6 +51,7 @@ We can deploy
   - [x] Rook NFS :boom: need nfs-common
   - [x] Rook CEPH :boom: need rdb module and higher kernel
   - [x] Rook cockroach
+  - [x] Rook minio
 - [ ] k8s: Create and Deploy Ingress Controllers
 - [ ] k8s: Create and Deploy an HA cluster
 - [ ] k8s: Create and Deploy cert manager with helm
@@ -174,7 +175,7 @@ usr/lib/modules/4.14.82-Zero-OS/kernel/drivers # find /usr/lib/modules | grep rd
 /usr/lib/modules/4.14.82-Zero-OS/kernel/drivers/media/rc/keymaps/rc-avermedia-cardbus.ko
 ```
 
-### Installing [CockraochDB](https://rook.io/docs/rook/v1.2/cockroachdb.html)
+### Installing [rook CockroachDB](https://rook.io/docs/rook/v1.2/cockroachdb.html)
 
 **Deploy CockroachDB Operator**
 First deploy the Rook CockroachDB operator using the following commands:
@@ -249,3 +250,45 @@ To connect to the database and view the data that the load generator has written
 ```
 kubectl -n rook-cockroachdb-system exec -it $(kubectl -n rook-cockroachdb-system get pod -l app=rook-cockroachdb-operator -o jsonpath='{.items[0].metadata.name}') -- /cockroach/cockroach sql --insecure --host=cockroachdb-public.rook-cockroachdb -d test -e 'select * from kv'
 ```
+
+### Installing [rook minio](https://rook.io/docs/rook/v1.2/minio-object-store.html)
+
+**Deploy Minio Operator**
+
+First deploy the Rook CockroachDB operator using the following commands:
+
+```
+cd resources/storage/rook-cockroachdb
+kubectl create -f operator.yaml
+```
+
+You can check if the operator is up and running with:
+
+```
+ kubectl -n rook-cockroachdb-system get pod
+```
+
+**Create and Initialize a Distributed Minio Object Store**
+Now that the operator is running, we can create an instance of a distributed Minio object store by creating an instance of the objectstore.minio.rook.io resource. Some of that resource’s values are configurable, so feel free to browse object-store.yaml and tweak the settings to your liking.
+
+It is strongly recommended to update the values of accessKey and secretKey in object-store.yaml to a secure key pair, as described in the Minio client quickstart guide.
+
+When you are ready to create a Minio object store, simply run:
+
+```
+kubectl create -f object-store.yaml
+kubectl -n rook-minio get objectstores.minio.rook.io
+kubectl -n rook-minio get pod -l app=minio,objectstore=my-store
+```
+
+**Accessing the Object Store**
+
+Minio comes with an embedded web based object browser. In the example, the object store we have created can be exposed external to the cluster at the Kubernetes cluster IP via a “NodePort”. We can see which port has been assigned to the service via:
+
+```
+kubectl -n rook-minio get service minio-my-store -o jsonpath='{.spec.ports[0].nodePort}'
+```
+
+then navigate to the ip of a node and the port printed with the line above
+
+![minio webui](ressources/storage/rook-minio/miniowebui.png)
