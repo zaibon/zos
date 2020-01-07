@@ -47,6 +47,10 @@ We can deploy
 - [x] k8s: Create and Deploy prometheus monitoring with helm
 
 - [ ] k8s: Create and Deploy Storage solution (PV, PVC)
+  - [x] Rook
+  - [x] Rook NFS :boom: need nfs-common
+  - [x] Rook CEPH :boom: need rdb module and higher kernel
+  - [x] Rook cockroach
 - [ ] k8s: Create and Deploy Ingress Controllers
 - [ ] k8s: Create and Deploy an HA cluster
 - [ ] k8s: Create and Deploy cert manager with helm
@@ -154,3 +158,94 @@ Mounting arguments: -t nfs 10.43.102.171:/nfs-default-claim /var/lib/kubelet/pod
 probably need nfs-common
 
 ### Installing [rook CEPH](https://rook.io/docs/rook/v1.2/ceph.html)
+
+RBD
+
+Rook Ceph requires a Linux kernel built with the RBD module. Many distributions of Linux have this module but some don’t, e.g. the GKE Container-Optimised OS (COS) does not have RBD. You can test your Kubernetes nodes by running modprobe rbd. If it says ‘not found’, you may have to rebuild your kernel or choose a different Linux distribution.
+
+CephFS
+
+If you will be creating volumes from a Ceph shared file system (CephFS), the recommended minimum kernel version is 4.17. If you have a kernel version less than 4.17, the requested PVC sizes will not be enforced. Storage quotas will only be enforced on newer kernels.
+
+No RDB module and kernel < 4.17
+
+```
+usr/lib/modules/4.14.82-Zero-OS/kernel/drivers # find /usr/lib/modules | grep rdb
+/usr/lib/modules/4.14.82-Zero-OS/kernel/drivers/media/rc/keymaps/rc-avermedia-cardbus.ko
+```
+
+### Installing [CockraochDB](https://rook.io/docs/rook/v1.2/cockroachdb.html)
+
+**Deploy CockroachDB Operator**
+First deploy the Rook CockroachDB operator using the following commands:
+
+```
+cd resources/storage/rook-cockroachdb
+kubectl create -f operator.yaml
+```
+
+You can check if the operator is up and running with:
+
+```
+ kubectl -n rook-cockroachdb-system get pod
+```
+
+**Create and Initialize CockroachDB Cluster**
+
+```
+kubectl create -f cluster.yaml
+kubectl -n rook-cockroachdb get clusters.cockroachdb.rook.io
+```
+
+To check if all the desired replicas are running, you should see the same number of entries from the following command as the replica count that was specified in cluster.yaml:
+
+```
+kubectl -n rook-cockroachdb get pod -l app=rook-cockroachdb
+```
+
+**Accessing the Database**
+To use the cockroach sql client to connect to the database cluster, run the following command in its entirety:
+
+```
+kubectl -n rook-cockroachdb-system exec -it $(kubectl -n rook-cockroachdb-system get pod -l app=rook-cockroachdb-operator -o jsonpath='{.items[0].metadata.name}') -- /cockroach/cockroach sql --insecure --host=cockroachdb-public.rook-cockroachdb
+```
+
+This will land you in a prompt where you can begin to run SQL commands directly on the database cluster.
+
+Example:
+
+```
+root@cockroachdb-public.rook-cockroachdb:26257/> show databases;
++----------+
+| Database |
++----------+
+| system   |
+| test     |
++----------+
+(2 rows)
+
+Time: 2.105065ms
+```
+
+**Example App**
+If you want to run an example application to exercise your new CockroachDB cluster, there is a load generator application in the same directory as the operator and cluster resource files. The load generator will start writing random key-value pairs to the database cluster, verifying that the cluster is functional and can handle reads and writes.
+
+The rate at which the load generator writes data is configurable, so feel free to tweak the values in loadgen-kv.yaml. Setting --max-rate=0 will enable the load generator to go as fast as it can, putting a large amount of load onto your database cluster.
+
+To run the load generator example app, simply run:
+
+```
+kubectl create -f loadgen-kv.yaml
+```
+
+You can check on the progress and statistics of the load generator by running:
+
+```
+ kubectl -n rook-cockroachdb logs -l app=loadgen
+```
+
+To connect to the database and view the data that the load generator has written, run the following command:
+
+```
+kubectl -n rook-cockroachdb-system exec -it $(kubectl -n rook-cockroachdb-system get pod -l app=rook-cockroachdb-operator -o jsonpath='{.items[0].metadata.name}') -- /cockroach/cockroach sql --insecure --host=cockroachdb-public.rook-cockroachdb -d test -e 'select * from kv'
+```
