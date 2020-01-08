@@ -78,6 +78,26 @@ We can deploy
 
 ## Storage
 
+### Local Path k3s storage class
+
+When deploying an application that needs to retain data, you’ll need to create persistent storage. Persistent storage allows you to store application data external from the pod running your application. This storage practice allows you to maintain application data, even if the application’s pod fails.
+
+A persistent volume (PV) is a piece of storage in the Kubernetes cluster, while a persistent volume claim (PVC) is a request for storage.
+
+![Persistant storage in kubernetes](ressources/storage/simple-localpath/persistentstorage.png)
+
+K3s comes with Rancher’s Local Path Provisioner and this enables the ability to create persistent volume claims out of the box using local storage on the respective node.
+
+let's create a hostPath backed persistent volume claim and a pod to utilize it:
+
+```
+cd ressources/storage/simple-localpath/
+kubectl create -f pvc.yaml
+kubectl create -f pod.yaml
+```
+
+### Rook
+
 Rook is an open source cloud-native storage orchestrator, providing the platform, framework, and support for a diverse set of storage solutions to natively integrate with cloud-native environments.
 
 Rook turns storage software into self-managing, self-scaling, and self-healing storage services. It does this by automating deployment, bootstrapping, configuration, provisioning, scaling, upgrading, migration, disaster recovery, monitoring, and resource management. Rook uses the facilities provided by the underlying cloud-native container management, scheduling and orchestration platform to perform its duties.
