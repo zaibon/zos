@@ -45,8 +45,9 @@ We can deploy
 - [x] k8s: Create Services with clusterIP and NodePort
 - [x] k8s: Create PV and PVC with local path
 - [x] k8s: Create and Deploy prometheus monitoring with helm
-
 - [ ] k8s: Create and Deploy Storage solution (PV, PVC)
+  - [x] local path
+  - [x] longhorn :boom: iscsiadm/open-iscsi must be installed on the host
   - [x] Rook
   - [x] Rook NFS :boom: need nfs-common
   - [x] Rook CEPH :boom: need rdb module and higher kernel
@@ -86,7 +87,14 @@ A persistent volume (PV) is a piece of storage in the Kubernetes cluster, while 
 
 ![Persistant storage in kubernetes](ressources/storage/simple-localpath/persistentstorage.png)
 
+PV has three access modes
+
+- RWO: Read Write Once. It can only be read/write on one node at any given time
+- RWX: Read Write Many. It can only be read/write on multiple node at the same time
+- ROX: Read Only Many
+
 K3s comes with Rancher’s Local Path Provisioner and this enables the ability to create persistent volume claims out of the box using local storage on the respective node.
+StorageClass "local-path": Only support ReadWriteOnce access mode
 
 let's create a hostPath backed persistent volume claim and a pod to utilize it:
 
@@ -94,6 +102,24 @@ let's create a hostPath backed persistent volume claim and a pod to utilize it:
 cd ressources/storage/simple-localpath/
 kubectl create -f pvc.yaml
 kubectl create -f pod.yaml
+```
+
+### longhorn
+
+K3s supports Longhorn. Longhorn is an open-source distributed block storage system for Kubernetes.
+Apply the longhorn.yaml to install Longhorn:
+
+```
+cd ressources/storage/longhorn/
+kubectl create -f longhorn.yaml
+kubectl create -f sc.yaml
+```
+
+Problem
+
+```
+[longhorn-manager-lp7v2] time="2020-01-08T09:52:05Z" level=error msg="Failed environment check, please make sure you have iscsiadm/open-iscsi installed on the host"
+[longhorn-manager-lp7v2] time="2020-01-08T09:52:05Z" level=fatal msg="Error starting manager: Environment check failed: Failed to execute: nsenter [--mount=/host/proc/1/ns/mnt --net=/host/proc/1/ns/net iscsiadm --version], output nsenter: failed to execute iscsiadm: No such file or directory\n, error exit status 1"
 ```
 
 ### Rook
