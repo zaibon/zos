@@ -52,13 +52,14 @@ func (s *nodeStore) nodeDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *nodeStore) listNodes(w http.ResponseWriter, r *http.Request) {
-	nodes := s.List()
+	nodes, err := s.List()
+	if err != nil {
+		httpError(w, err, http.StatusInternalServerError)
+		return
+	}
 	sFarm := r.URL.Query().Get("farm")
 
-	var (
-		farm uint64
-		err  error
-	)
+	var farm uint64
 
 	if sFarm != "" {
 		farm, err = strconv.ParseUint(sFarm, 10, 64)
@@ -86,13 +87,14 @@ func (s *nodeStore) listNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *nodeStore) cockpitListNodes(w http.ResponseWriter, r *http.Request) {
-	nodes := s.List()
+	nodes, err := s.List()
+	if err != nil {
+		httpError(w, err, http.StatusInternalServerError)
+		return
+	}
 	sFarm := r.URL.Query().Get("farm")
 
-	var (
-		farm uint64
-		err  error
-	)
+	var farm uint64
 
 	if sFarm != "" {
 		farm, err = strconv.ParseUint(sFarm, 10, 64)

@@ -19,6 +19,7 @@ require (
 	github.com/containernetworking/plugins v0.8.2
 	github.com/dave/jennifer v1.3.0
 	github.com/deckarep/golang-set v1.7.1
+	github.com/dgraph-io/badger v1.6.0
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
@@ -26,6 +27,7 @@ require (
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-redis/redis v6.15.5+incompatible
 	github.com/gogo/googleapis v1.3.0 // indirect
+	github.com/gogo/protobuf v1.3.0
 	github.com/gomodule/redigo v1.7.0
 	github.com/google/shlex v0.0.0-20181106134648-c34317bd91bf
 	github.com/google/uuid v1.1.1

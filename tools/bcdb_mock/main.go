@@ -9,39 +9,39 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/dgraph-io/badger"
+
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 )
 
 var listen string
+var storage string
 
 func main() {
 	flag.StringVar(&listen, "listen", ":8080", "listen address, default :8080")
-
+	flag.StringVar(&storage, "data", "data", "path to the directory where to store the data")
 	flag.Parse()
 
-	nodeStore, err := loadNodeStore()
+	db, err := badger.Open(badger.DefaultOptions(storage))
 	if err != nil {
-		log.Fatalf("error loading node store: %v\n", err)
+		log.Fatal(err)
 	}
-	farmStore, err := loadfarmStore()
-	if err != nil {
-		log.Fatalf("error loading farm store: %v\n", err)
-	}
-	resStore, err := loadProvisionStore()
-	if err != nil {
-		log.Fatalf("error loading provision store: %v\n", err)
-	}
+	defer db.Close()
+
+	nodeStore := NewNodeStore(db)
+	farmStore := NewFarmStore(db)
+	resStore := NewReservationStore(db)
 
 	defer func() {
-		if err := nodeStore.Save(); err != nil {
-			log.Printf("failed to save data: %v\n", err)
+		if err := nodeStore.Close(); err != nil {
+			log.Printf("error closing node store: %v", err)
 		}
-		if err := farmStore.Save(); err != nil {
-			log.Printf("failed to save data: %v\n", err)
+		if err := farmStore.Close(); err != nil {
+			log.Printf("error closing farm store: %v", err)
 		}
-		if err := resStore.Save(); err != nil {
-			log.Printf("failed to save reservations: %v\n", err)
+		if err := resStore.Close(); err != nil {
+			log.Printf("error closing node store: %v", err)
 		}
 	}()
 
@@ -95,3 +95,29 @@ func main() {
 		log.Printf("error during server shutdown: %v\n", err)
 	}
 }
+
+// if importPath != "" {
+// 	f, err := os.OpenFile(importPath, os.O_RDONLY, 0660)
+// 	if err != nil {
+// 		log.Fatalf("error during import: %v", err)
+// 	}
+// 	defer f.Close()
+
+// 	nodes := struct {
+// 		Nodes []*directory.TfgridNode2 `json:"nodes"`
+// 	}{
+// 		Nodes: []*directory.TfgridNode2{},
+// 	}
+// 	if err := json.NewDecoder(f).Decode(&nodes); err != nil {
+// 		log.Fatal(err)
+// 	}
+
+// 	nodeStore := &nodeStore{db: db}
+// 	for _, node := range nodes.Nodes {
+// 		if err := nodeStore.Add(*node); err != nil {
+// 			log.Fatalf("error during import: %v", err)
+// 		}
+// 	}
+
+// 	return
+// }

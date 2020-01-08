@@ -53,12 +53,20 @@ func (s *reservationsStore) poll(w http.ResponseWriter, r *http.Request) {
 	output := []*provision.Reservation{}
 	if from == 0 {
 		// just get all reservation for this nodeID
-		output = s.GetReservations(nodeID, from)
+		output, err = s.GetReservations(nodeID, from)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	} else {
 		// otherwise start long polling
 		timeout := time.Now().Add(time.Second * 20)
 		for {
-			output = s.GetReservations(nodeID, from)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+
 			if len(output) > 0 {
 				break
 			}

@@ -4,12 +4,12 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
-	"os"
 	"sort"
-	"sync"
 	"time"
 
+	"github.com/dgraph-io/badger"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/threefoldtech/zos/pkg/capacity"
@@ -19,83 +19,96 @@ import (
 	"github.com/threefoldtech/zos/pkg/gedis/types/directory"
 )
 
+var prefixNode = []byte("node:")
+
 type nodeStore struct {
-	Nodes []*directory.TfgridNode2 `json:"nodes"`
-	m     sync.RWMutex
+	db *badger.DB
 }
 
-func loadNodeStore() (*nodeStore, error) {
-	store := &nodeStore{
-		Nodes: []*directory.TfgridNode2{},
-	}
-	f, err := os.OpenFile("nodes.json", os.O_RDONLY, 0660)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return store, nil
-		}
-		return store, err
-	}
-	defer f.Close()
-	if err := json.NewDecoder(f).Decode(&store); err != nil {
-		return store, err
-	}
-	return store, nil
+func NewNodeStore(db *badger.DB) *nodeStore {
+	return &nodeStore{db: db}
 }
 
-func (s *nodeStore) Save() error {
-	s.m.RLock()
-	defer s.m.RUnlock()
-
-	f, err := os.OpenFile("nodes.json", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0660)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := json.NewEncoder(f).Encode(s); err != nil {
-		return err
-	}
+func (s *nodeStore) Close() error {
 	return nil
 }
 
-func (s *nodeStore) List() []*directory.TfgridNode2 {
-	s.m.RLock()
-	defer s.m.RUnlock()
-	out := make([]*directory.TfgridNode2, len(s.Nodes))
-
-	copy(out, s.Nodes)
-	return out
+func nodeKey(nodeID string) []byte {
+	return append(prefixNode, []byte(nodeID)...)
 }
 
-func (s *nodeStore) Get(nodeID string) (*directory.TfgridNode2, error) {
-	s.m.RLock()
-	defer s.m.RUnlock()
+func (s *nodeStore) List() ([]*directory.TfgridNode2, error) {
+	out := make([]*directory.TfgridNode2, 0, 100)
 
-	for _, n := range s.Nodes {
-		if n.NodeID == nodeID {
-			return n, nil
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchSize = 10
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(prefixNode); it.ValidForPrefix(prefixNode); it.Next() {
+			item := it.Item()
+			var node directory.TfgridNode2
+			err := item.Value(func(v []byte) error {
+				return json.Unmarshal(v, &node)
+			})
+			if err != nil {
+				return err
+			}
+			out = append(out, &node)
 		}
-	}
-	return nil, fmt.Errorf("node %s not found", nodeID)
+		return nil
+	})
+
+	return out, err
+}
+
+func (s *nodeStore) Get(nodeID string) (node directory.TfgridNode2, err error) {
+	err = s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(nodeKey(nodeID))
+		if err != nil {
+			return err
+		}
+
+		return item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &node)
+		})
+	})
+
+	return node, err
 }
 
 func (s *nodeStore) Add(node directory.TfgridNode2) error {
-	s.m.Lock()
-	defer s.m.Unlock()
+	return s.db.Update(func(txn *badger.Txn) error {
+		key := nodeKey(node.NodeID)
 
-	for i, n := range s.Nodes {
-		if n.NodeID == node.NodeID {
-			s.Nodes[i].FarmID = node.FarmID
-			s.Nodes[i].OsVersion = node.OsVersion
-			s.Nodes[i].Location = node.Location
-			s.Nodes[i].Updated = schema.Date{Time: time.Now()}
-			return nil
+		item, err := txn.Get(key)
+
+		if err == nil { // existing node
+			var existing directory.TfgridNode2
+			if err := item.Value(func(val []byte) error {
+				return json.Unmarshal(val, &existing)
+			}); err != nil {
+				return err
+			}
+
+			// only update those fields when the node already exist
+			existing.FarmID = node.FarmID
+			existing.OsVersion = node.OsVersion
+			existing.Location = node.Location
+			existing.Updated = schema.Date{Time: time.Now()}
+			node = existing
 		}
-	}
 
-	node.Created = schema.Date{Time: time.Now()}
-	node.Updated = schema.Date{Time: time.Now()}
-	s.Nodes = append(s.Nodes, &node)
-	return nil
+		node.Created = schema.Date{Time: time.Now()}
+		node.Updated = schema.Date{Time: time.Now()}
+		val, err := json.Marshal(node)
+		if err != nil {
+			return err
+		}
+		log.Printf("store node %v", string(key))
+		return txn.Set(key, val)
+	})
 }
 
 func (s *nodeStore) updateTotalCapacity(nodeID string, cap directory.TfgridNodeResourceAmount1) error {
@@ -109,113 +122,205 @@ func (s *nodeStore) updateUsedCapacity(nodeID string, cap directory.TfgridNodeRe
 }
 
 func (s *nodeStore) updateCapacity(nodeID string, t string, cap directory.TfgridNodeResourceAmount1) error {
-	node, err := s.Get(nodeID)
-	if err != nil {
-		return err
-	}
+	return s.db.Update(func(txn *badger.Txn) error {
+		key := nodeKey(nodeID)
 
-	switch t {
-	case "total":
-		node.TotalResources = cap
-	case "reserved":
-		node.ReservedResources = cap
-	case "used":
-		node.UsedResources = cap
-	default:
-		return fmt.Errorf("unsupported capacity type: %v", t)
-	}
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
 
-	return nil
+		var node directory.TfgridNode2
+		if err := item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &node)
+		}); err != nil {
+			return err
+		}
+
+		switch t {
+		case "total":
+			node.TotalResources = cap
+		case "reserved":
+			node.ReservedResources = cap
+		case "used":
+			node.UsedResources = cap
+		default:
+			return fmt.Errorf("unsupported capacity type: %v", t)
+		}
+
+		val, err := json.Marshal(node)
+		if err != nil {
+			return err
+		}
+		return txn.Set(key, val)
+	})
 }
 
 func (s *nodeStore) updateUptime(nodeID string, uptime int64) error {
-	node, err := s.Get(nodeID)
-	if err != nil {
-		return err
-	}
+	return s.db.Update(func(txn *badger.Txn) error {
+		key := nodeKey(nodeID)
 
-	node.Uptime = uptime
-	node.Updated = schema.Date{Time: time.Now()}
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
 
-	return nil
+		var node directory.TfgridNode2
+		if err := item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &node)
+		}); err != nil {
+			return err
+		}
+
+		node.Uptime = uptime
+		node.Updated = schema.Date{Time: time.Now()}
+		val, err := json.Marshal(node)
+		if err != nil {
+			return err
+		}
+		return txn.Set(key, val)
+	})
 }
 
 func (s *nodeStore) StoreProof(nodeID string, dmi dmi.DMI, disks capacity.Disks) error {
-	node, err := s.Get(nodeID)
-	if err != nil {
-		return err
-	}
+	return s.db.Update(func(txn *badger.Txn) error {
+		key := nodeKey(nodeID)
 
-	proof := directory.TfgridNodeProof1{
-		Created: schema.Date{Time: time.Now()},
-	}
-
-	proof.Hardware = map[string]interface{}{
-		"sections": dmi.Sections,
-		"tooling":  dmi.Tooling,
-	}
-	proof.HardwareHash, err = hashProof(proof.Hardware)
-	if err != nil {
-		return err
-	}
-
-	proof.Disks = map[string]interface{}{
-		"aggregator":  disks.Aggregator,
-		"environment": disks.Environment,
-		"devices":     disks.Devices,
-		"tool":        disks.Tool,
-	}
-	proof.DiskHash, err = hashProof(proof.Disks)
-	if err != nil {
-		return err
-	}
-
-	// don't save the proof if we already have one with the same
-	// hash/content
-	for _, p := range node.Proofs {
-		if proof.Equal(p) {
-			return nil
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
 		}
-	}
 
-	node.Proofs = append(node.Proofs, proof)
-	return nil
+		var node directory.TfgridNode2
+		if err := item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &node)
+		}); err != nil {
+			return err
+		}
+
+		proof := directory.TfgridNodeProof1{
+			Created: schema.Date{Time: time.Now()},
+		}
+
+		proof.Hardware = map[string]interface{}{
+			"sections": dmi.Sections,
+			"tooling":  dmi.Tooling,
+		}
+		proof.HardwareHash, err = hashProof(proof.Hardware)
+		if err != nil {
+			return err
+		}
+
+		proof.Disks = map[string]interface{}{
+			"aggregator":  disks.Aggregator,
+			"environment": disks.Environment,
+			"devices":     disks.Devices,
+			"tool":        disks.Tool,
+		}
+		proof.DiskHash, err = hashProof(proof.Disks)
+		if err != nil {
+			return err
+		}
+
+		// don't save the proof if we already have one with the same
+		// hash/content
+		for _, p := range node.Proofs {
+			if proof.Equal(p) {
+				return nil
+			}
+		}
+
+		node.Proofs = append(node.Proofs, proof)
+
+		val, err := json.Marshal(node)
+		if err != nil {
+			return err
+		}
+		return txn.Set(key, val)
+	})
 }
 
 func (s *nodeStore) SetInterfaces(nodeID string, ifaces []directory.TfgridNodeIface1) error {
-	node, err := s.Get(nodeID)
-	if err != nil {
-		return err
-	}
+	return s.db.Update(func(txn *badger.Txn) error {
+		key := nodeKey(nodeID)
 
-	node.Ifaces = ifaces
-	return nil
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+
+		var node directory.TfgridNode2
+		if err := item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &node)
+		}); err != nil {
+			return err
+		}
+
+		node.Ifaces = ifaces
+
+		val, err := json.Marshal(node)
+		if err != nil {
+			return err
+		}
+		return txn.Set(key, val)
+	})
 }
 
 func (s *nodeStore) SetPublicConfig(nodeID string, cfg directory.TfgridNodePublicIface1) error {
-	node, err := s.Get(nodeID)
-	if err != nil {
-		return err
-	}
+	return s.db.Update(func(txn *badger.Txn) error {
+		key := nodeKey(nodeID)
 
-	if node.PublicConfig == nil {
-		cfg.Version = 0
-	} else {
-		cfg.Version = node.PublicConfig.Version + 1
-	}
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
 
-	node.PublicConfig = &cfg
-	return nil
+		var node directory.TfgridNode2
+		if err := item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &node)
+		}); err != nil {
+			return err
+		}
+
+		if node.PublicConfig == nil {
+			cfg.Version = 0
+		} else {
+			cfg.Version = node.PublicConfig.Version + 1
+		}
+		node.PublicConfig = &cfg
+
+		val, err := json.Marshal(node)
+		if err != nil {
+			return err
+		}
+		return txn.Set(key, val)
+	})
 }
 
 func (s *nodeStore) SetWGPorts(nodeID string, ports []uint) error {
-	node, err := s.Get(nodeID)
-	if err != nil {
-		return err
-	}
+	return s.db.Update(func(txn *badger.Txn) error {
+		key := nodeKey(nodeID)
 
-	node.WGPorts = ports
-	return nil
+		item, err := txn.Get(key)
+		if err != nil {
+			return err
+		}
+
+		var node directory.TfgridNode2
+		if err := item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &node)
+		}); err != nil {
+			return err
+		}
+
+		node.WGPorts = ports
+
+		val, err := json.Marshal(node)
+		if err != nil {
+			return err
+		}
+		return txn.Set(key, val)
+	})
 }
 
 func (s *nodeStore) Requires(key string, handler http.HandlerFunc) http.HandlerFunc {
