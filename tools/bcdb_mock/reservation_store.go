@@ -113,6 +113,7 @@ func (s *reservationsStore) GetReservations(nodeID string, from uint64) ([]*prov
 
 		for it.Seek(prefixReservation); it.ValidForPrefix(prefixReservation); it.Next() {
 			item := it.Item()
+
 			var r reservation
 			err := item.Value(func(v []byte) error {
 				return json.Unmarshal(v, &r)
@@ -121,15 +122,13 @@ func (s *reservationsStore) GetReservations(nodeID string, from uint64) ([]*prov
 				return err
 			}
 
-			log.Printf("reservation %s for node %s\n", r.Reservation.ID, r.Reservation.NodeID)
-
 			if r.NodeID != nodeID {
-				return nil
+				continue
 			}
 
 			resID, _, err := r.Reservation.SplitID()
 			if err != nil {
-				return nil //continue
+				continue
 			}
 
 			if from == 0 ||

@@ -62,6 +62,7 @@ func (s *reservationsStore) poll(w http.ResponseWriter, r *http.Request) {
 		// otherwise start long polling
 		timeout := time.Now().Add(time.Second * 20)
 		for {
+			output, err = s.GetReservations(nodeID, from)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
